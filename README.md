@@ -404,6 +404,36 @@ Cache reads and writes use both message ID and chat JID.
 - `chat_jid` (required): JID of the chat containing the message
 - `force` (optional): transcribe again even when a transcript is stored
 
+#### `send_typing`
+
+Show or hide the typing indicator in a chat.
+
+**Parameters:**
+
+- `recipient` (required): Phone number or chat JID
+- `is_typing` (optional, default `true`): `true` shows "typing…" to the other side, `false` clears it
+
+Sending a message also clears the indicator, so the usual flow is
+`send_typing(recipient)` → compose → `send_message(...)`.
+
+#### `request_history`
+
+Request older messages for one chat from the primary device (the phone). The
+bridge anchors on the oldest message it already stores for the chat, so calling
+repeatedly pages further back. Messages arrive asynchronously — re-run
+`list_messages` after a few seconds. The phone decides how much history it
+actually returns.
+
+**Parameters:**
+
+- `chat_jid` (required): JID of the chat to backfill
+- `count` (optional): How many older messages to request (default 50, max 500)
+
+#### `bridge_status`
+
+Check the bridge's health and WhatsApp connection state. Returns `status`
+(`"ok"`, `"disconnected"`, or `"unreachable"`), `connected`, and `timestamp`.
+
 ### Chat Operations
 
 All chat tools (`list_chats`, `get_chat`, `get_direct_chat_by_contact`,

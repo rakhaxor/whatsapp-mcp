@@ -14,6 +14,9 @@ from parent_watchdog import install_stdio_parent_watchdog
 from whatsapp import (
     MESSAGES_DB_PATH,
     msg_to_dict,
+    bridge_status as whatsapp_bridge_status,
+)
+from whatsapp import (
     delete_message as whatsapp_delete_message,
 )
 from whatsapp import (
@@ -45,6 +48,12 @@ from whatsapp import (
 )
 from whatsapp import (
     mark_messages_read as whatsapp_mark_messages_read,
+)
+from whatsapp import (
+    request_history as whatsapp_request_history,
+)
+from whatsapp import (
+    send_typing as whatsapp_send_typing,
 )
 from whatsapp import (
     search_contacts as whatsapp_search_contacts,
@@ -426,6 +435,56 @@ def delete_message(
     """
     success, status_message = whatsapp_delete_message(chat_jid, message_id, for_everyone)
     return {"success": success, "message": status_message}
+
+
+@mcp.tool()
+def send_typing(recipient: str, is_typing: bool = True) -> dict[str, Any]:
+    """Show or hide the typing indicator in a chat.
+
+    Send with is_typing=True before composing a reply, and either send the
+    message (which clears it) or call again with is_typing=False to stop.
+
+    Args:
+        recipient: Phone number with country code (no + or symbols) or a JID
+                   (e.g., "12025551234@s.whatsapp.net" or a group JID)
+        is_typing: True shows "typing…" to the other side, False clears it
+
+    Returns:
+        A dictionary containing success status and a status message
+    """
+    success, status_message = whatsapp_send_typing(recipient, is_typing)
+    return {"success": success, "message": status_message}
+
+
+@mcp.tool()
+def request_history(chat_jid: str, count: int = 0) -> dict[str, Any]:
+    """Request older messages for one chat from the primary device (the phone).
+
+    The bridge anchors the request on the oldest message it already stores for
+    the chat, so calling repeatedly pages further back in time. Older messages
+    arrive asynchronously; re-run list_messages after a few seconds to see them.
+    The phone has the final say on how much history it returns.
+
+    Args:
+        chat_jid: JID of the chat to backfill (e.g., "12025551234@s.whatsapp.net")
+        count: How many older messages to request (bridge default 50, max 500)
+
+    Returns:
+        A dictionary containing success status and a status message
+    """
+    success, status_message = whatsapp_request_history(chat_jid, count)
+    return {"success": success, "message": status_message}
+
+
+@mcp.tool()
+def bridge_status() -> dict[str, Any]:
+    """Check the WhatsApp bridge's health and connection state.
+
+    Returns:
+        A dictionary with "status" ("ok", "disconnected", or "unreachable"),
+        "connected" (bool), and "timestamp" (unix seconds) when reachable
+    """
+    return whatsapp_bridge_status()
 
 
 @mcp.tool()

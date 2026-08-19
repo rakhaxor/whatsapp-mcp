@@ -1418,6 +1418,91 @@ def delete_message(
         return False, f"Unexpected error: {str(e)}"
 
 
+def send_typing(recipient: str, is_typing: bool = True) -> tuple[bool, str]:
+    """Show or hide the typing indicator in a chat.
+
+    Args:
+        recipient: Phone number or chat JID to show the indicator in.
+        is_typing: True shows "typing…", False clears it back to paused.
+
+    Returns:
+        Tuple of (success, status_message).
+    """
+    try:
+        if not recipient:
+            return False, "Recipient must be provided"
+
+        url = f"{WHATSAPP_API_BASE_URL}/typing"
+        payload = {"recipient": recipient, "is_typing": is_typing}
+        response = requests.post(url, json=payload, headers=_bridge_headers())
+
+        if response.status_code == 200:
+            result = response.json()
+            return result.get("success", False), result.get("message", "Unknown response")
+        return False, f"Error: HTTP {response.status_code} - {response.text}"
+
+    except requests.RequestException as e:
+        return False, f"Request error: {str(e)}"
+    except json.JSONDecodeError:
+        return False, f"Error parsing response: {response.text}"
+    except Exception as e:
+        return False, f"Unexpected error: {str(e)}"
+
+
+def request_history(chat_jid: str, count: int = 0) -> tuple[bool, str]:
+    """Request older messages for one chat from the primary device (the phone).
+
+    The bridge anchors the request on the oldest message it already holds for
+    the chat, so repeated calls page further back as older messages land.
+
+    Args:
+        chat_jid: JID of the chat to backfill.
+        count: How many older messages to request (bridge default 50, max 500;
+               0 or omitted uses the bridge default).
+
+    Returns:
+        Tuple of (success, status_message).
+    """
+    try:
+        if not chat_jid:
+            return False, "chat_jid must be provided"
+
+        url = f"{WHATSAPP_API_BASE_URL}/history"
+        payload: dict[str, Any] = {"chat_jid": chat_jid}
+        if count > 0:
+            payload["count"] = count
+        response = requests.post(url, json=payload, headers=_bridge_headers())
+
+        result = response.json()
+        if response.status_code == 200:
+            return result.get("success", False), result.get("message", "Unknown response")
+        return False, result.get("message", f"Error: HTTP {response.status_code} - {response.text}")
+
+    except requests.RequestException as e:
+        return False, f"Request error: {str(e)}"
+    except json.JSONDecodeError:
+        return False, f"Error parsing response: {response.text}"
+    except Exception as e:
+        return False, f"Unexpected error: {str(e)}"
+
+
+def bridge_status() -> dict[str, Any]:
+    """Check the bridge's health and WhatsApp connection state.
+
+    Returns:
+        Dict with "status" ("ok" or "disconnected"), "connected" (bool), and
+        "timestamp" (unix seconds), or an "error" key if the bridge is unreachable.
+    """
+    try:
+        url = f"{WHATSAPP_API_BASE_URL}/health"
+        response = requests.get(url, headers=_bridge_headers(), timeout=10)
+        return response.json()
+    except requests.RequestException as e:
+        return {"status": "unreachable", "connected": False, "error": str(e)}
+    except json.JSONDecodeError:
+        return {"status": "error", "connected": False, "error": f"Invalid response: {response.text}"}
+
+
 def mark_messages_read(
     message_ids: list[str],
     chat_jid: str,
