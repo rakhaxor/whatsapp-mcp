@@ -14,6 +14,7 @@ from parent_watchdog import install_stdio_parent_watchdog
 from whatsapp import (
     MESSAGES_DB_PATH,
     msg_to_dict,
+    delete_message as whatsapp_delete_message,
 )
 from whatsapp import (
     download_media as whatsapp_download_media,
@@ -397,6 +398,33 @@ def send_reaction(
         A dictionary containing success status and a status message
     """
     success, status_message = whatsapp_send_reaction(recipient, message_id, emoji, from_me, sender_jid)
+    return {"success": success, "message": status_message}
+
+
+@mcp.tool()
+def delete_message(
+    chat_jid: str,
+    message_id: str,
+    for_everyone: bool = False,
+) -> dict[str, Any]:
+    """Delete a WhatsApp message.
+
+    This is an explicit external side effect.
+
+    Args:
+        chat_jid: The JID of the chat containing the message (e.g., "12025551234@s.whatsapp.net"
+                  or a group JID like "123456789@g.us")
+        message_id: The ID of the message to delete
+        for_everyone: If True, revoke our own message so it disappears for all chat
+                      participants (WhatsApp's "Delete for everyone"; only works on
+                      messages we sent, within WhatsApp's revoke window). If False
+                      (default), delete the message only for this account
+                      ("Delete for me"), synced across our linked devices.
+
+    Returns:
+        A dictionary containing success status and a status message
+    """
+    success, status_message = whatsapp_delete_message(chat_jid, message_id, for_everyone)
     return {"success": success, "message": status_message}
 
 

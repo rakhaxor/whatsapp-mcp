@@ -29,8 +29,10 @@ import (
 	"bytes"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
+	"go.mau.fi/whatsmeow/proto/waSyncAction"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
@@ -1278,6 +1280,21 @@ type ReactRequest struct {
 	FromMe    bool    `json:"from_me"`    // whether the reacted-to message was sent by us
 	SenderJID string  `json:"sender_jid"` // full JID of the reacted-to message's sender
 	Emoji     *string `json:"emoji"`      // reaction emoji; empty string removes the reaction
+}
+
+// RevokeRequest is the request body for the /api/revoke endpoint.
+type RevokeRequest struct {
+	Recipient string `json:"recipient"`  // chat JID
+	MessageID string `json:"message_id"` // ID of our own message to revoke
+}
+
+// DeleteForMeRequest is the request body for the /api/delete-for-me endpoint.
+type DeleteForMeRequest struct {
+	ChatJID   string `json:"chat_jid"`
+	MessageID string `json:"message_id"`
+	FromMe    bool   `json:"from_me"`
+	SenderJID string `json:"sender_jid,omitempty"` // required for others' messages in groups
+	Timestamp int64  `json:"timestamp,omitempty"`  // original message unix timestamp (seconds)
 }
 
 // classifyMediaPath maps a file extension to (whatsmeow upload type, MIME
@@ -2759,6 +2776,97 @@ func newRESTMux(client *whatsmeow.Client, messageStore *MessageStore, port int, 
 		msg := client.BuildReaction(chatJID, senderJID, req.MessageID, *req.Emoji)
 		w.Header().Set("Content-Type", "application/json")
 		if _, err := client.SendMessage(context.Background(), chatJID, msg); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	}))
+
+	// Handler for revoking (deleting for everyone) our own messages
+	mux.HandleFunc("/api/revoke", auth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req RevokeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Recipient == "" || req.MessageID == "" {
+			http.Error(w, "recipient and message_id are required", http.StatusBadRequest)
+			return
+		}
+		chatJID, err := types.ParseJID(req.Recipient)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid recipient JID: %v", err), http.StatusBadRequest)
+			return
+		}
+		if client.Store.ID == nil {
+			http.Error(w, "Not logged in", http.StatusServiceUnavailable)
+			return
+		}
+		// Empty sender JID means "revoke own message" in whatsmeow
+		msg := client.BuildRevoke(chatJID, types.EmptyJID, req.MessageID)
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := client.SendMessage(context.Background(), chatJID, msg); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	}))
+
+	// Handler for deleting a message for us only (app state patch, synced to all our devices)
+	mux.HandleFunc("/api/delete-for-me", auth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req DeleteForMeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ChatJID == "" || req.MessageID == "" {
+			http.Error(w, "chat_jid and message_id are required", http.StatusBadRequest)
+			return
+		}
+		chatJID, err := types.ParseJID(req.ChatJID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid chat_jid: %v", err), http.StatusBadRequest)
+			return
+		}
+		if client.Store.ID == nil {
+			http.Error(w, "Not logged in", http.StatusServiceUnavailable)
+			return
+		}
+		// Index sender slot is "0" unless the message is someone else's in a group
+		senderStr := "0"
+		if !req.FromMe && chatJID.Server == types.GroupServer {
+			if req.SenderJID == "" {
+				http.Error(w, "sender_jid is required for others' messages in groups", http.StatusBadRequest)
+				return
+			}
+			senderJID, err := types.ParseJID(req.SenderJID)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Invalid sender_jid: %v", err), http.StatusBadRequest)
+				return
+			}
+			senderStr = senderJID.ToNonAD().String()
+		}
+		isFromMe := "0"
+		if req.FromMe {
+			isFromMe = "1"
+		}
+		patch := appstate.PatchInfo{
+			Type: appstate.WAPatchRegularHigh,
+			Mutations: []appstate.MutationInfo{{
+				Index:   []string{appstate.IndexDeleteMessageForMe, chatJID.String(), req.MessageID, isFromMe, senderStr},
+				Version: 3,
+				Value: &waSyncAction.SyncActionValue{
+					DeleteMessageForMeAction: &waSyncAction.DeleteMessageForMeAction{
+						DeleteMedia:      proto.Bool(true),
+						MessageTimestamp: proto.Int64(req.Timestamp),
+					},
+				},
+			}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := client.SendAppState(context.Background(), patch); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return

@@ -269,6 +269,27 @@ When webhook forwarding is enabled, inbound reactions are also posted to `WEBHOO
 - "React to that message with a thumbs up"
 - "Remove my reaction from the last message in the group chat"
 
+#### `delete_message`
+
+Delete a message, either for everyone or only for this account.
+
+**Parameters:**
+
+- `chat_jid` (required): JID of the chat containing the message
+- `message_id` (required): ID of the message to delete
+- `for_everyone` (optional, default `false`): If `true`, revoke our own message so it
+  disappears for all chat participants (WhatsApp's "Delete for everyone"; only works on
+  messages we sent, within WhatsApp's revoke window). If `false`, delete the message only
+  for this account ("Delete for me"), synced across our linked devices.
+
+Sender, direction, and timestamp are looked up automatically from the message store.
+Deleting for everyone is refused for messages sent by other people.
+
+**Natural Language Examples:**
+
+- "Delete that message for everyone"
+- "Delete the last message from the group chat just for me"
+
 #### `send_file`
 
 Send a media file (image, video, document).

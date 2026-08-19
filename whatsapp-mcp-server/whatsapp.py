@@ -1341,6 +1341,83 @@ def send_reaction(
         return False, f"Unexpected error: {str(e)}"
 
 
+def delete_message(
+    chat_jid: str,
+    message_id: str,
+    for_everyone: bool = False,
+) -> tuple[bool, str]:
+    """Delete a WhatsApp message.
+
+    Args:
+        chat_jid: The JID of the chat containing the message.
+        message_id: The ID of the message to delete.
+        for_everyone: If True, revoke our own message so it disappears for all
+                      participants (WhatsApp's "Delete for everyone"; only works
+                      on messages we sent, within WhatsApp's revoke window).
+                      If False, delete the message only for this account
+                      ("Delete for me"), synced across our linked devices.
+
+    Returns:
+        Tuple of (success, status_message).
+    """
+    try:
+        if not chat_jid or not message_id:
+            return False, "chat_jid and message_id must be provided"
+
+        conn = sqlite3.connect(MESSAGES_DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT is_from_me, sender, timestamp FROM messages WHERE id = ? AND chat_jid = ?",
+            (message_id, chat_jid),
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if row is None:
+            return False, f"Message {message_id} not found in chat {chat_jid}"
+        is_from_me, sender, timestamp = bool(row[0]), row[1], row[2]
+
+        if for_everyone:
+            if not is_from_me:
+                return False, "Only messages sent by this account can be deleted for everyone"
+            url = f"{WHATSAPP_API_BASE_URL}/revoke"
+            payload: dict[str, Any] = {"recipient": chat_jid, "message_id": message_id}
+        else:
+            unix_ts = 0
+            try:
+                unix_ts = int(datetime.fromisoformat(timestamp).timestamp())
+            except (TypeError, ValueError):
+                pass
+            sender_jid = sender or ""
+            if sender_jid and "@" not in sender_jid:
+                sender_jid += "@s.whatsapp.net"
+            url = f"{WHATSAPP_API_BASE_URL}/delete-for-me"
+            payload = {
+                "chat_jid": chat_jid,
+                "message_id": message_id,
+                "from_me": is_from_me,
+                "sender_jid": sender_jid,
+                "timestamp": unix_ts,
+            }
+
+        response = requests.post(url, json=payload, headers=_bridge_headers())
+
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("ok"):
+                return True, (
+                    "Message deleted for everyone" if for_everyone else "Message deleted for me"
+                )
+            return False, result.get("error", "Unknown error")
+        return False, f"Error: HTTP {response.status_code} - {response.text}"
+
+    except requests.RequestException as e:
+        return False, f"Request error: {str(e)}"
+    except json.JSONDecodeError:
+        return False, f"Error parsing response: {response.text}"
+    except Exception as e:
+        return False, f"Unexpected error: {str(e)}"
+
+
 def mark_messages_read(
     message_ids: list[str],
     chat_jid: str,
