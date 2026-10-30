@@ -14,6 +14,8 @@ from parent_watchdog import install_stdio_parent_watchdog
 from whatsapp import (
     MESSAGES_DB_PATH,
     msg_to_dict,
+)
+from whatsapp import (
     bridge_status as whatsapp_bridge_status,
 )
 from whatsapp import (
@@ -53,9 +55,6 @@ from whatsapp import (
     request_history as whatsapp_request_history,
 )
 from whatsapp import (
-    send_typing as whatsapp_send_typing,
-)
-from whatsapp import (
     search_contacts as whatsapp_search_contacts,
 )
 from whatsapp import (
@@ -69,6 +68,9 @@ from whatsapp import (
 )
 from whatsapp import (
     send_reaction as whatsapp_send_reaction,
+)
+from whatsapp import (
+    send_typing as whatsapp_send_typing,
 )
 
 # Initialize FastMCP server. Env-var handling is deferred to the __main__ block

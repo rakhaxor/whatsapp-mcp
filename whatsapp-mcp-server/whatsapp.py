@@ -1364,7 +1364,7 @@ def delete_message(
         if not chat_jid or not message_id:
             return False, "chat_jid and message_id must be provided"
 
-        conn = sqlite3.connect(MESSAGES_DB_PATH)
+        conn = _connect_messages_db()
         cursor = conn.cursor()
         cursor.execute(
             "SELECT is_from_me, sender, timestamp FROM messages WHERE id = ? AND chat_jid = ?",
@@ -1404,9 +1404,7 @@ def delete_message(
         if response.status_code == 200:
             result = response.json()
             if result.get("ok"):
-                return True, (
-                    "Message deleted for everyone" if for_everyone else "Message deleted for me"
-                )
+                return True, ("Message deleted for everyone" if for_everyone else "Message deleted for me")
             return False, result.get("error", "Unknown error")
         return False, f"Error: HTTP {response.status_code} - {response.text}"
 
