@@ -249,6 +249,14 @@ if print -r -- "\$HEALTH" | grep -Eq '"connected"[[:space:]]*:[[:space:]]*true';
 fi
 
 if [[ "\$connected" == "true" ]]; then
+  # A half-open socket keeps "connected" true while nothing arrives (2026-11-06: 12 h deaf). A live
+  # client logs a keepalive every ~25 s, so a log untouched for 5 min = dead socket: restart the bridge.
+  BRIDGE_LOG="\$LOG_DIR/bridge.out.log"
+  if [[ -f "\$BRIDGE_LOG" ]] && (( \$(date +%s) - \$(stat -f %m "\$BRIDGE_LOG") > 300 )); then
+    print -r -- "\$(date '+%F %T') bridge log stale while connected, restarting"
+    launchctl kickstart -k "gui/\$USER_ID/\$BRIDGE_LABEL"
+    exit 0
+  fi
   if [[ -f "\$STATE_DIR/connection-state" ]]; then
     notify "WhatsApp Connected Again" "AutoJack can receive WhatsApp messages again."
     rm -f "\$STATE_DIR/connection-state"
